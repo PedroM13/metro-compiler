@@ -1,0 +1,172 @@
+options {
+  LOOKAHEAD = 1;
+  STATIC = false;
+  IGNORE_CASE = true;
+}
+
+PARSER_BEGIN(MetroCompiler)
+package metrocompiler.parser;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import metrocompiler.model.*;
+
+public class MetroCompiler {
+  private final List<Instruccion> instrucciones = new ArrayList<>();
+  private BigDecimal ultimoVuelto = null;
+
+  public List<Instruccion> getInstrucciones() {
+    return instrucciones;
+  }
+
+  private void validarMonto(BigDecimal monto, String campo) throws ParseException {
+    if (monto.compareTo(BigDecimal.ZERO) <= 0) {
+      throw new ParseException("El campo '" + campo + "' debe ser mayor que 0.");
+    }
+  }
+
+  private void validarCodigoTarjeta(String codigo) throws ParseException {
+    if (codigo.length() > 20) {
+      throw new ParseException("El codigo de tarjeta no puede superar 20 caracteres.");
+    }
+  }
+
+  private BigDecimal calcularVuelto(BigDecimal pagar, BigDecimal pagado) throws ParseException {
+    if (pagado.compareTo(pagar) < 0) {
+      throw new ParseException("El monto pagado no puede ser menor al monto a pagar.");
+    }
+    return pagado.subtract(pagar);
+  }
+}
+PARSER_END(MetroCompiler)
+
+SKIP : {
+  " "
+| "\t"
+| "\r"
+| "\n"
+| < COMENTARIO_LINEA: "//" (~["\n", "\r"])* >
+}
+
+TOKEN : {
+  < PUNTO_COMA: ";" >
+| < COMA: "," >
+| < SELECCIONAR: "SELECCIONAR" >
+| < VIAJE: "VIAJE" >
+| < PAGAR: "PAGAR" >
+| < DEVOLVER: "DEVOLVER" >
+| < RECARGAR: "RECARGAR" >
+| < TARJETA: "TARJETA" >
+| < PREPAGO: "PREPAGO" >
+| < DESCONTAR: "DESCONTAR" >
+| < SIMPLE: "simple" >
+| < DOBLE: "doble" >
+| < TURISTICO: "turistico" | "turístico" >
+| < NUMERO_DECIMAL: ("0" | ["1"-"9"] (["0"-"9"])*) ("." ["0"-"9"] (["0"-"9"])? )? >
+| < CODIGO_TARJETA: (["A"-"Z","a"-"z","0"-"9"]){1,20} >
+}
+
+void Programa() : {}
+{
+  ( Instruccion() )* <EOF>
+}
+
+void Instruccion() : {}
+{
+    SeleccionarViajeInstr()
+  | PagarViajeInstr()
+  | DevolverInstr()
+  | RecargarTarjetaInstr()
+  | DescontarViajeInstr()
+}
+
+void SeleccionarViajeInstr() :
+{
+  Token tipo;
+  String valor;
+}
+{
+  <SELECCIONAR> <VIAJE>
+  ( tipo=<SIMPLE> | tipo=<DOBLE> | tipo=<TURISTICO> )
+  <PUNTO_COMA>
+  {
+    valor = tipo.image.toLowerCase();
+    instrucciones.add(new SeleccionarViaje(valor));
+  }
+}
+
+void PagarViajeInstr() :
+{
+  Token montoPagarToken;
+  Token montoPagadoToken;
+  BigDecimal montoPagar;
+  BigDecimal montoPagado;
+  BigDecimal vuelto;
+}
+{
+  <PAGAR> <VIAJE>
+  montoPagarToken=<NUMERO_DECIMAL> <COMA> montoPagadoToken=<NUMERO_DECIMAL>
+  <PUNTO_COMA>
+  {
+    montoPagar = new BigDecimal(montoPagarToken.image);
+    montoPagado = new BigDecimal(montoPagadoToken.image);
+    validarMonto(montoPagar, "monto_pagar");
+    validarMonto(montoPagado, "monto_pagado");
+    vuelto = calcularVuelto(montoPagar, montoPagado);
+    ultimoVuelto = vuelto;
+    instrucciones.add(new PagarViaje(montoPagar, montoPagado));
+  }
+}
+
+void DevolverInstr() :
+{
+  BigDecimal vuelto;
+}
+{
+  <DEVOLVER> <PUNTO_COMA>
+  {
+    if (ultimoVuelto == null) {
+      throw new ParseException("No existe un pago previo para calcular DEVOLVER.");
+    }
+    vuelto = ultimoVuelto;
+    instrucciones.add(new Devolver(vuelto));
+    ultimoVuelto = null;
+  }
+}
+
+void RecargarTarjetaInstr() :
+{
+  Token codigoToken;
+  Token montoToken;
+  BigDecimal monto;
+}
+{
+  <RECARGAR> <TARJETA> <PREPAGO>
+  codigoToken=<CODIGO_TARJETA> <COMA> montoToken=<NUMERO_DECIMAL>
+  <PUNTO_COMA>
+  {
+    monto = new BigDecimal(montoToken.image);
+    validarMonto(monto, "monto_recargar");
+    validarCodigoTarjeta(codigoToken.image);
+    instrucciones.add(new RecargarTarjeta(codigoToken.image, monto));
+  }
+}
+
+void DescontarViajeInstr() :
+{
+  Token codigoToken;
+  Token montoToken;
+  BigDecimal monto;
+}
+{
+  <DESCONTAR> <VIAJE>
+  codigoToken=<CODIGO_TARJETA> <COMA> montoToken=<NUMERO_DECIMAL>
+  <PUNTO_COMA>
+  {
+    monto = new BigDecimal(montoToken.image);
+    validarMonto(monto, "monto_descontar");
+    validarCodigoTarjeta(codigoToken.image);
+    instrucciones.add(new DescontarViaje(codigoToken.image, monto));
+  }
+}
