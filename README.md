@@ -52,7 +52,7 @@ java -cp bin metrocompiler.Compilador testProgram.txt
 
 ## Instrucciones soportadas
 
-- `SELECCIONAR VIAJE simple|doble|turistico`
+- `SELECCIONAR VIAJE simple|doble|turístico`
 - `PAGAR VIAJE monto_pagar, monto_pagado`
 - `DEVOLVER`
 - `RECARGAR TARJETA PREPAGO codigo_tarjeta, monto_recargar`
